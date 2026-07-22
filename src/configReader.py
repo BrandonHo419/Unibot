@@ -1,6 +1,9 @@
+
 from configparser import ConfigParser
-import numpy as np
 import os
+import sys
+
+import numpy as np
 
 
 class ConfigReader:
@@ -64,126 +67,365 @@ class ConfigReader:
         self.display_mode = None
         self.debug_fullscreen_capture = None
 
-        # Get config path and read it
-        self.path = os.path.join(os.path.dirname(__file__), '../config.ini')
+        # Prefer config.ini beside the executable for Nuitka builds.
+        # Fall back to the repository root during normal Python execution.
+        self.path = self._find_config_path()
         self.parser.read(self.path)
 
     def read_config(self):
-        # Reset mutable collections to prevent accumulation on reload
+        # Reset mutable collections when F1 reloads the configuration.
         self.aim_keys = []
 
-        # Get communication settings
-        value = self.parser.get('communication', 'type', fallback='rebind').lower()
-        if value != 'rebind':
-            raise ValueError("Only the 'rebind' communication type is supported")
+        self._read_communication_settings()
+        self._read_aim_settings()
+        self._read_screen_settings()
+        self._read_recoil_settings()
+        self._read_trigger_settings()
+        self._read_keybind_settings()
+        self._read_debug_settings()
+
+    def _read_communication_settings(self):
+        value = self.parser.get(
+            "communication",
+            "type",
+            fallback="rebind",
+        ).strip().lower()
+
+        if value != "rebind":
+            raise ValueError(
+                "Only the 'rebind' communication type is supported"
+            )
+
         self.communication_type = value
 
         self.rebind_url = self.parser.get(
-            'communication', 'rebind_url',
-            fallback='ws://127.0.0.1:19561'
-        )
+            "communication",
+            "rebind_url",
+            fallback="ws://127.0.0.1:19561",
+        ).strip()
+
         self.rebind_connect_timeout = self.parser.getfloat(
-            'communication', 'rebind_connect_timeout', fallback=5.0
+            "communication",
+            "rebind_connect_timeout",
+            fallback=5.0,
         )
         self.rebind_ping_timeout = self.parser.getfloat(
-            'communication', 'rebind_ping_timeout', fallback=3.0
+            "communication",
+            "rebind_ping_timeout",
+            fallback=3.0,
         )
         self.rebind_reconnect_delay = self.parser.getfloat(
-            'communication', 'rebind_reconnect_delay', fallback=1.0
+            "communication",
+            "rebind_reconnect_delay",
+            fallback=1.0,
         )
-        
-        self.screen_center_offset = self.parser.getint('aim', 'screen_center_offset')
 
-        value = self.parser.getfloat('aim', 'aim_smoothing_factor')
-        if 0 <= value <= 1:
-            self.aim_smoothing_factor = 1 - value / 1.25
-        else:
-            print('WARNING: Invalid aim_smoothing_factor value')
+        if self.rebind_connect_timeout <= 0:
+            raise ValueError(
+                "rebind_connect_timeout must be greater than zero"
+            )
 
-        self.speed = self.parser.getfloat('aim', 'speed')
-        self.y_speed_multiplier = self.parser.getfloat('aim', 'y_speed_multiplier')
+        if self.rebind_ping_timeout <= 0:
+            raise ValueError(
+                "rebind_ping_timeout must be greater than zero"
+            )
 
-        value = self.parser.getfloat('aim', 'aim_height')
-        if 0 <= value <= 1:
-            self.aim_height = value
-        else:
-            print('WARNING: Invalid aim_height value')
+        if self.rebind_reconnect_delay < 0:
+            raise ValueError(
+                "rebind_reconnect_delay cannot be negative"
+            )
 
-        # Get screen settings
-        values_str = self.parser.get('screen', 'group_close_target_blobs_threshold').split(',')
-        self.group_close_target_blobs_threshold = (int(values_str[0].strip()), int(values_str[1].strip()))
+    def _read_aim_settings(self):
+        self.screen_center_offset = self.parser.getint(
+            "aim",
+            "screen_center_offset",
+        )
 
-        self.upper_color = self._parse_color_array('screen', 'upper_color')
-        self.lower_color = self._parse_color_array('screen', 'lower_color')
+        value = self.parser.getfloat(
+            "aim",
+            "aim_smoothing_factor",
+        )
 
-        self.capture_fov_x = self.parser.getint('screen', 'capture_fov_x')
-        self.capture_fov_y = self.parser.getint('screen', 'capture_fov_y')
-        self.aim_fov_x = self.parser.getint('screen', 'aim_fov_x')
-        self.aim_fov_y = self.parser.getint('screen', 'aim_fov_y')
-        max_loops_per_sec = self.parser.getint('screen', 'max_loops_per_sec')
+        if not 0 <= value <= 1:
+            raise ValueError(
+                "aim_smoothing_factor must be between 0 and 1"
+            )
+
+        # Preserve the original Unibot smoothing conversion.
+        self.aim_smoothing_factor = 1 - value / 1.25
+
+        self.speed = self.parser.getfloat("aim", "speed")
+        self.y_speed_multiplier = self.parser.getfloat(
+            "aim",
+            "y_speed_multiplier",
+        )
+
+        self.aim_height = self.parser.getfloat(
+            "aim",
+            "aim_height",
+        )
+
+        if not 0 <= self.aim_height <= 1:
+            raise ValueError(
+                "aim_height must be between 0 and 1"
+            )
+
+    def _read_screen_settings(self):
+        values = self.parser.get(
+            "screen",
+            "group_close_target_blobs_threshold",
+        ).split(",")
+
+        if len(values) != 2:
+            raise ValueError(
+                "group_close_target_blobs_threshold "
+                "must contain two integers"
+            )
+
+        self.group_close_target_blobs_threshold = (
+            int(values[0].strip()),
+            int(values[1].strip()),
+        )
+
+        self.upper_color = self._parse_color_array(
+            "screen",
+            "upper_color",
+        )
+        self.lower_color = self._parse_color_array(
+            "screen",
+            "lower_color",
+        )
+
+        self.capture_fov_x = self.parser.getint(
+            "screen",
+            "capture_fov_x",
+        )
+        self.capture_fov_y = self.parser.getint(
+            "screen",
+            "capture_fov_y",
+        )
+        self.aim_fov_x = self.parser.getint(
+            "screen",
+            "aim_fov_x",
+        )
+        self.aim_fov_y = self.parser.getint(
+            "screen",
+            "aim_fov_y",
+        )
+
+        max_loops_per_sec = self.parser.getint(
+            "screen",
+            "max_loops_per_sec",
+        )
+
         if max_loops_per_sec <= 0:
-            raise ValueError('max_loops_per_sec must be greater than zero')
+            raise ValueError(
+                "max_loops_per_sec must be greater than zero"
+            )
+
         self.min_loop_time = 1000.0 / max_loops_per_sec
 
-        self.auto_detect_resolution = self.parser.getboolean('screen', 'auto_detect_resolution')
+        self.auto_detect_resolution = self.parser.getboolean(
+            "screen",
+            "auto_detect_resolution",
+        )
+        self.resolution_x = self.parser.getint(
+            "screen",
+            "resolution_x",
+        )
+        self.resolution_y = self.parser.getint(
+            "screen",
+            "resolution_y",
+        )
 
-        self.resolution_x = self.parser.getint('screen', 'resolution_x')
-        self.resolution_y = self.parser.getint('screen', 'resolution_y')
+    def _read_recoil_settings(self):
+        self.recoil_mode = self.parser.get(
+            "recoil",
+            "mode",
+        ).strip().lower()
 
-        # Get recoil settings
-        value = self.parser.get('recoil', 'mode').lower()
-        recoil_mode_list = ['move', 'offset']
-        if value in recoil_mode_list:
-            self.recoil_mode = value
+        if self.recoil_mode not in ("move", "offset"):
+            raise ValueError(
+                "recoil mode must be 'move' or 'offset'"
+            )
+
+        self.recoil_x = self.parser.getfloat(
+            "recoil",
+            "recoil_x",
+        )
+        self.recoil_y = self.parser.getfloat(
+            "recoil",
+            "recoil_y",
+        )
+        self.max_offset = self.parser.getint(
+            "recoil",
+            "max_offset",
+        )
+        self.recoil_recover = self.parser.getfloat(
+            "recoil",
+            "recover",
+        )
+
+    def _read_trigger_settings(self):
+        self.trigger_delay = self.parser.getint(
+            "trigger",
+            "trigger_delay",
+        )
+        self.trigger_randomization = self.parser.getint(
+            "trigger",
+            "trigger_randomization",
+        )
+        self.trigger_threshold = self.parser.getint(
+            "trigger",
+            "trigger_threshold",
+        )
+
+        self.target_cps = self.parser.getint(
+            "rapid_fire",
+            "target_cps",
+        )
+
+        if self.target_cps <= 0:
+            raise ValueError(
+                "target_cps must be greater than zero"
+            )
+
+    def _read_keybind_settings(self):
+        self.key_reload_config = self.read_hex(
+            self.parser.get(
+                "key_binds",
+                "key_reload_config",
+            )
+        )
+        self.key_toggle_aim = self.read_hex(
+            self.parser.get(
+                "key_binds",
+                "key_toggle_aim",
+            )
+        )
+        self.key_toggle_recoil = self.read_hex(
+            self.parser.get(
+                "key_binds",
+                "key_toggle_recoil",
+            )
+        )
+        self.key_exit = self.read_hex(
+            self.parser.get(
+                "key_binds",
+                "key_exit",
+            )
+        )
+        self.key_trigger = self.read_hex(
+            self.parser.get(
+                "key_binds",
+                "key_trigger",
+            )
+        )
+
+        self.key_rapid_fire = self.read_optional_hex(
+            self.parser.get(
+                "key_binds",
+                "key_rapid_fire",
+                fallback="off",
+            )
+        )
+
+        aim_keys_value = self.parser.get(
+            "key_binds",
+            "aim_keys",
+        ).strip()
+
+        if aim_keys_value.lower() == "off":
+            self.aim_keys = ["off"]
         else:
-            print('WARNING: Invalid recoil_mode value')
+            self.aim_keys = [
+                self.read_hex(key)
+                for key in aim_keys_value.split(",")
+            ]
 
-        self.recoil_x = self.parser.getfloat('recoil', 'recoil_x')
-        self.recoil_y = self.parser.getfloat('recoil', 'recoil_y')
-        self.max_offset = self.parser.getint('recoil', 'max_offset')
-        self.recoil_recover = self.parser.getfloat('recoil', 'recover')
+            if not self.aim_keys:
+                raise ValueError(
+                    "At least one aim key must be configured"
+                )
 
-        # Get trigger settings
-        self.trigger_delay = self.parser.getint('trigger', 'trigger_delay')
-        self.trigger_randomization = self.parser.getint('trigger', 'trigger_randomization')
-        self.trigger_threshold = self.parser.getint('trigger', 'trigger_threshold')
+    def _read_debug_settings(self):
+        self.debug = self.parser.getboolean(
+            "debug",
+            "enabled",
+        )
+        self.debug_always_on = self.parser.getboolean(
+            "debug",
+            "always_on",
+        )
 
-        # Get rapid fire settings
-        self.target_cps = self.parser.getint('rapid_fire', 'target_cps')
+        self.display_mode = self.parser.get(
+            "debug",
+            "display_mode",
+        ).strip().lower()
 
-        # Get keybind settings
-        self.key_reload_config = self.read_hex(self.parser.get('key_binds', 'key_reload_config'))
-        self.key_toggle_aim = self.read_hex(self.parser.get('key_binds', 'key_toggle_aim'))
-        self.key_toggle_recoil = self.read_hex(self.parser.get('key_binds', 'key_toggle_recoil'))
-        self.key_exit = self.read_hex(self.parser.get('key_binds', 'key_exit'))
-        self.key_trigger = self.read_hex(self.parser.get('key_binds', 'key_trigger'))
-        self.key_rapid_fire = self.read_hex(self.parser.get('key_binds', 'key_rapid_fire'))
-        aim_keys_str = self.parser.get('key_binds', 'aim_keys')
-        if not aim_keys_str == 'off':
-            aim_keys_str = aim_keys_str.split(',')
-            for key in aim_keys_str:
-                self.aim_keys.append(self.read_hex(key))
-        else:
-            self.aim_keys = ['off']
+        if self.display_mode not in ("game", "mask"):
+            raise ValueError(
+                "display_mode must be 'game' or 'mask'"
+            )
 
-        # Get debug settings
-        self.debug = self.parser.getboolean('debug', 'enabled')
-        self.debug_always_on = self.parser.getboolean('debug', 'always_on')
-
-        value = self.parser.get('debug', 'display_mode').lower()
-        display_mode_list = ['game', 'mask']
-        if value in display_mode_list:
-            self.display_mode = value
-        else:
-            print('WARNING: Invalid display_mode value')
-
-        self.debug_fullscreen_capture = self.parser.getboolean('debug', 'debug_fullscreen_capture', fallback=False)
+        self.debug_fullscreen_capture = (
+            self.parser.getboolean(
+                "debug",
+                "debug_fullscreen_capture",
+                fallback=False,
+            )
+        )
 
     def _parse_color_array(self, section, option):
-        """Parse a comma-separated color string into a numpy integer array."""
-        values = self.parser.get(section, option).split(',')
-        return np.array([int(v.strip()) for v in values])
+        values = self.parser.get(section, option).split(",")
+
+        if len(values) != 3:
+            raise ValueError(
+                f"{option} must contain three integers"
+            )
+
+        result = np.array(
+            [int(value.strip()) for value in values],
+            dtype=np.uint8,
+        )
+
+        return result
 
     @staticmethod
     def read_hex(string):
-        return int(string, 16)
+        return int(string.strip(), 16)
+
+    @staticmethod
+    def read_optional_hex(string):
+        value = string.strip().lower()
+
+        if value == "off":
+            return None
+
+        return int(value, 16)
+
+    @staticmethod
+    def _find_config_path():
+        executable_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(sys.argv[0]),
+                "config.ini",
+            )
+        )
+
+        source_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "config.ini",
+            )
+        )
+
+        for path in (executable_path, source_path):
+            if os.path.isfile(path):
+                return path
+
+        raise FileNotFoundError(
+            "config.ini was not found beside the executable "
+            "or in the repository root"
+        )

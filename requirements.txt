@@ -1,5 +1,5 @@
 dxcam
 numpy
 opencv-python
-PyAutoGUI
 pywin32
+websocket-client

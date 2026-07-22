@@ -1,4 +1,3 @@
-# Copyright (C) 2026 vike256 — Unibot. See LICENSE.txt for full GPL-3.0 license.
 from configparser import ConfigParser
 import numpy as np
 import os
@@ -10,6 +9,10 @@ class ConfigReader:
 
         # Communication
         self.communication_type = None
+        self.rebind_url = None
+        self.rebind_connect_timeout = None
+        self.rebind_ping_timeout = None
+        self.rebind_reconnect_delay = None
 
         # Screen
         self.group_close_target_blobs_threshold = None
@@ -70,12 +73,24 @@ class ConfigReader:
         self.aim_keys = []
 
         # Get communication settings
-        value = self.parser.get('communication', 'type').lower()
-        communication_type_list = ['winapi', 'interception_driver', 'serial', 'socket']
-        if value in communication_type_list:
-            self.communication_type = value
-        else:
-            print('WARNING: Invalid communication_type value')
+        value = self.parser.get('communication', 'type', fallback='rebind').lower()
+        if value != 'rebind':
+            raise ValueError("Only the 'rebind' communication type is supported")
+        self.communication_type = value
+
+        self.rebind_url = self.parser.get(
+            'communication', 'rebind_url',
+            fallback='ws://127.0.0.1:19561'
+        )
+        self.rebind_connect_timeout = self.parser.getfloat(
+            'communication', 'rebind_connect_timeout', fallback=5.0
+        )
+        self.rebind_ping_timeout = self.parser.getfloat(
+            'communication', 'rebind_ping_timeout', fallback=3.0
+        )
+        self.rebind_reconnect_delay = self.parser.getfloat(
+            'communication', 'rebind_reconnect_delay', fallback=1.0
+        )
         
         self.screen_center_offset = self.parser.getint('aim', 'screen_center_offset')
 
@@ -94,14 +109,6 @@ class ConfigReader:
         else:
             print('WARNING: Invalid aim_height value')
 
-        # Get communication settings
-        match self.communication_type:
-            case 'socket':
-                self.microcontroller_ip = self.parser.get('communication', 'microcontroller_ip')
-                self.microcontroller_port = self.parser.getint('communication', 'microcontroller_port')
-            case 'serial':
-                self.com_port = self.parser.get('communication', 'com_port')
-
         # Get screen settings
         values_str = self.parser.get('screen', 'group_close_target_blobs_threshold').split(',')
         self.group_close_target_blobs_threshold = (int(values_str[0].strip()), int(values_str[1].strip()))
@@ -114,7 +121,9 @@ class ConfigReader:
         self.aim_fov_x = self.parser.getint('screen', 'aim_fov_x')
         self.aim_fov_y = self.parser.getint('screen', 'aim_fov_y')
         max_loops_per_sec = self.parser.getint('screen', 'max_loops_per_sec')
-        self.min_loop_time = 1000 // max_loops_per_sec + 1
+        if max_loops_per_sec <= 0:
+            raise ValueError('max_loops_per_sec must be greater than zero')
+        self.min_loop_time = 1000.0 / max_loops_per_sec
 
         self.auto_detect_resolution = self.parser.getboolean('screen', 'auto_detect_resolution')
 

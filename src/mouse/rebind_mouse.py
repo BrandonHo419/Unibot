@@ -20,6 +20,7 @@ class RebindMouse(BaseMouse):
         self._closed = False
         self._send_lock = threading.Lock()
         self._state_lock = threading.Lock()
+        self._connect_lock = threading.Lock()
         self._pong_event = threading.Event()
         self._receiver_thread = None
 
@@ -117,22 +118,28 @@ class RebindMouse(BaseMouse):
                     if self.ws is ws:
                         self.ws = None
                         self.connected = False
+                try:
+                    ws.close()
+                except Exception:
+                    pass
                 raise
 
     def _ensure_connected(self):
         if self._closed:
             raise ConnectionError("Rebind mouse has been closed")
 
-        if self.connected and self.ws is not None:
-            return
+        with self._connect_lock:
+            with self._state_lock:
+                if self.connected and self.ws is not None:
+                    return
 
-        while not self._closed:
-            try:
-                self._connect()
-                return
-            except Exception as error:
-                print(f"Rebind reconnect failed: {type(error).__name__}: {error}")
-                time.sleep(self.cfg.rebind_reconnect_delay)
+            while not self._closed:
+                try:
+                    self._connect()
+                    return
+                except Exception as error:
+                    print(f"Rebind reconnect failed: {type(error).__name__}: {error}")
+                    time.sleep(self.cfg.rebind_reconnect_delay)
 
         raise ConnectionError("Rebind mouse has been closed")
 

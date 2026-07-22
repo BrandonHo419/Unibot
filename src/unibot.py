@@ -18,52 +18,58 @@ class Unibot:
             config = ConfigReader()
             config.read_config()
 
-            keybinds = KeybindManager(config)
-            cheats = Cheats(config)
-            mouse = get_mouse_implementation(config)
-            screen = Screen(config)
+            mouse = None
+            screen = None
+            try:
+                keybinds = KeybindManager(config)
+                cheats = Cheats(config)
+                mouse = get_mouse_implementation(config)
+                screen = Screen(config)
 
-            print('Active')
+                print('Active')
 
-            # Cheat loop
-            while True:
-                now = time.perf_counter()
-                delta_time = now - start_time
-                start_time = now
+                # Main loop
+                while True:
+                    now = time.perf_counter()
+                    delta_time = now - start_time
+                    start_time = now
 
-                reload_config = keybinds.check_key_binds(cheats)
-                if reload_config:
-                    break
+                    reload_config = keybinds.check_key_binds(cheats)
+                    if reload_config:
+                        break
 
-                if self._should_process_frame(keybinds, cheats, config):
-                    target, trigger = screen.get_target(cheats.recoil_offset)
+                    if self._should_process_frame(keybinds, cheats, config):
+                        target, trigger = screen.get_target(cheats.recoil_offset)
 
-                    if keybinds.get_trigger_state() and trigger:
-                        delay_before_click = self._calculate_trigger_delay(config)
-                        mouse.click(delay_before_click)
+                        if keybinds.get_trigger_state() and trigger:
+                            delay_before_click = self._calculate_trigger_delay(config)
+                            mouse.click(delay_before_click)
 
-                    cheats.calculate_aim(cheats.get_aim_state(), target)
+                        cheats.calculate_aim(cheats.get_aim_state(), target)
 
-                if keybinds.get_rapid_fire_state():
-                    mouse.click()
+                    if keybinds.get_rapid_fire_state():
+                        mouse.click()
 
-                # Apply recoil
-                cheats.apply_recoil(cheats.recoil_state, delta_time)
+                    # Apply recoil
+                    cheats.apply_recoil(cheats.recoil_state, delta_time)
 
-                # Move the mouse based on the previous calculations
-                if cheats.move_x != 0 or cheats.move_y != 0:
-                    mouse.move(cheats.move_x, cheats.move_y)
+                    # Move the mouse based on the previous calculations
+                    if cheats.move_x != 0 or cheats.move_y != 0:
+                        mouse.move(cheats.move_x, cheats.move_y)
 
-                # Reset move values so the aim doesn't keep drifting when no targets are on the screen
-                cheats.move_x, cheats.move_y = (0, 0)
+                    # Avoid movement carrying into a later frame.
+                    cheats.move_x, cheats.move_y = (0, 0)
 
-                # Do not loop above the set refresh rate
-                time_spent = (time.perf_counter() - start_time) * 1000
-                if time_spent < config.min_loop_time:
-                    time.sleep((config.min_loop_time - time_spent) / 1000)
+                    # Do not loop above the configured refresh rate.
+                    time_spent = (time.perf_counter() - start_time) * 1000
+                    if time_spent < config.min_loop_time:
+                        time.sleep((config.min_loop_time - time_spent) / 1000)
+            finally:
+                if screen is not None:
+                    screen.close()
+                if mouse is not None:
+                    mouse.close()
 
-            screen.close()
-            mouse.close()
             print('Reloading')
 
     def _should_process_frame(self, keybinds, cheats, config):

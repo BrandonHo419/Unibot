@@ -3,7 +3,7 @@ import time
 import cv2
 import numpy as np
 import dxcam
-from pyautogui import size
+import win32api
 
 
 class Screen:
@@ -12,8 +12,10 @@ class Screen:
         self.cam = dxcam.create(output_color="BGR")
 
         if self.cfg.auto_detect_resolution:
-            screen_size = size()
-            self.screen = (screen_size.width, screen_size.height)
+            self.screen = (
+                win32api.GetSystemMetrics(0),
+                win32api.GetSystemMetrics(1),
+            )
         else:
             self.screen = (self.cfg.resolution_x, self.cfg.resolution_y)
 

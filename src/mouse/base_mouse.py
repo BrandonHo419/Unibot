@@ -2,12 +2,14 @@ import abc
 import threading
 import time
 import queue
-import random
 
 
 class BaseMouse(abc.ABC):
     def __init__(self, config):
         self.cfg = config
+        if config.target_cps <= 0:
+            raise ValueError('target_cps must be greater than zero')
+
         self.click_queue = queue.Queue()
         self.click_worker = threading.Thread(target=self._click_worker, daemon=True)
         self.click_worker.start()
@@ -59,28 +61,3 @@ class BaseMouse(abc.ABC):
     def close(self):
         self.click_queue.put(None)
         self.click_worker.join(timeout=1.0)
-
-
-class DriverMouse(BaseMouse, abc.ABC):
-    """Base class for driver-based mice (WinApi, Interception) that handle
-    physical mouse_down / mouse_up events."""
-
-    def send_click(self, delay_before_click=0):
-        time.sleep(delay_before_click)
-
-        random_delay = random.randint(40, 80) / 1000
-        self.mouse_down()
-        time.sleep(random_delay)
-        self.mouse_up()
-        if self.cfg.debug:
-            print(f'({self.label}) Sent: Click(random_delay={random_delay * 1000:g})')
-
-        time.sleep(random.randint(25, 34) / 1000)
-
-    @abc.abstractmethod
-    def mouse_down(self):
-        pass
-
-    @abc.abstractmethod
-    def mouse_up(self):
-        pass

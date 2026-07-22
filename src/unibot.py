@@ -1,4 +1,3 @@
-# Copyright (C) 2026 vike256 — Unibot. See LICENSE.txt for full GPL-3.0 license.
 import time
 import random
 
@@ -24,7 +23,7 @@ class Unibot:
             mouse = get_mouse_implementation(config)
             screen = Screen(config)
 
-            print('Unibot ON')
+            print('Active')
 
             # Cheat loop
             while True:

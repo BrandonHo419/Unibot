@@ -10,9 +10,6 @@ class ConfigReader:
 
         # Communication
         self.communication_type = None
-        self.microcontroller_ip = None
-        self.microcontroller_port = None
-        self.com_port = None
 
         # Screen
         self.group_close_target_blobs_threshold = None
